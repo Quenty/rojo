@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use core::Route;
-use plugin::{Plugin, PluginChain, TransformResult, FileChangeResult};
+use plugin::{Plugin, PluginChain, TransformFileResult, TransformRbxResult, FileChangeResult};
 use rbx::{RbxItem, RbxValue};
 use vfs::VfsItem;
 
@@ -17,7 +17,39 @@ impl DefaultPlugin {
 }
 
 impl Plugin for DefaultPlugin {
-    fn transform_file(&self, plugins: &PluginChain, vfs_item: &VfsItem) -> TransformResult {
+    fn transform_result(&self, plugins: &PluginChain, rbx_item: &RbxItem) -> TransformRbxResult {
+        match rbx_itme {
+            // does pattern matching even work like this?
+            &RbxItem { children: NOT_EMPTY_RIP_DONT_KNOW_RUST } =>
+            &RbxItem { class_name: "Folder".to_string(), ref name, ref children, .. } => {
+                // handle folder case
+                let mut vfs_children = HashMap::new();
+
+                for child_item in (children) {
+                    match plugins.transform_rbx(child_item) {
+                        Some(vfs_item) => {
+                            vfs_children.insert(child_item.name, vfs_item);
+                        },
+                        _ => {},
+                    }
+                }
+
+                TransformRbxResult::Value(Some(VfsItem::Folder {
+                    name: name.clone(),
+                    children: vfs_children,
+                }))
+            },
+            &RbxItem {ref class_name, ref name, ref children, ref properties} => {
+                // handle default case (string value/general serialization)
+                TransformRbxResult::Value(Some(VfsItem::File {
+                    name: name.clone(),
+
+                }))
+            },
+        }
+    }
+
+    fn transform_file(&self, plugins: &PluginChain, vfs_item: &VfsItem) -> TransformFileResult {
         match vfs_item {
             &VfsItem::File { ref contents, ref name } => {
                 let mut properties = HashMap::new();
@@ -26,7 +58,7 @@ impl Plugin for DefaultPlugin {
                     value: contents.clone(),
                 });
 
-                TransformResult::Value(Some(RbxItem {
+                TransformFileResult::Value(Some(RbxItem {
                     name: name.clone(),
                     class_name: "StringValue".to_string(),
                     children: Vec::new(),

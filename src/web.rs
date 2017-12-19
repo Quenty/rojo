@@ -181,7 +181,12 @@ pub fn start(config: Config, project: Project, vfs: Arc<Mutex<Vfs>>) {
             },
 
             (POST) (/write) => {
-                rouille::Response::empty_404()
+                let write_request: Vec<Vec<String>> = match read_json(&request) {
+                    Some(v) => v,
+                    None => return rouille::Response::empty_400(),
+                };
+
+                
             },
 
             _ => rouille::Response::empty_404()
