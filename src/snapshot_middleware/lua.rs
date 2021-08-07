@@ -1,4 +1,8 @@
-use std::{path::Path, str};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+    str,
+};
 
 use anyhow::Context;
 use maplit::hashmap;
@@ -8,7 +12,7 @@ use crate::snapshot::{InstanceContext, InstanceMetadata, InstanceSnapshot};
 
 use super::{
     dir::snapshot_dir, meta_file::AdjacentMetadata, middleware::SnapshotInstanceResult,
-    util::match_trailing,
+    util::match_trailing, Symlink,
 };
 
 /// Core routine for turning Lua files into snapshots.
@@ -63,9 +67,10 @@ pub fn snapshot_lua_init(
     context: &InstanceContext,
     vfs: &Vfs,
     init_path: &Path,
+    symlinks: &mut HashMap<PathBuf, Symlink>,
 ) -> SnapshotInstanceResult {
     let folder_path = init_path.parent().unwrap();
-    let dir_snapshot = snapshot_dir(context, vfs, folder_path)?.unwrap();
+    let dir_snapshot = snapshot_dir(context, vfs, folder_path, symlinks)?.unwrap();
 
     if dir_snapshot.class_name != "Folder" {
         anyhow::bail!(

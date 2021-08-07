@@ -232,6 +232,7 @@ mod test {
 
         let snapshot = InstanceSnapshot {
             snapshot_id: None,
+            symlink_canonical: None,
             metadata: Default::default(),
             name: Cow::Borrowed("Foo"),
             class_name: Cow::Borrowed("Bar"),

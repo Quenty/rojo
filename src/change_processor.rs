@@ -1,5 +1,7 @@
 use std::{
+    collections::HashMap,
     fs,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 
@@ -13,7 +15,7 @@ use crate::{
     snapshot::{
         apply_patch_set, compute_patch_set, AppliedPatchSet, InstigatingSource, PatchSet, RojoTree,
     },
-    snapshot_middleware::{snapshot_from_vfs, snapshot_project_node},
+    snapshot_middleware::{snapshot_from_vfs, snapshot_project_node, Symlink},
 };
 
 /// Owns the connection between Rojo's VFS and its DOM by holding onto another
@@ -149,8 +151,13 @@ impl JobThreadContext {
                         }
                     };
 
+                    // TODO: Store/retrieve/figure this out
+                    let mut symlinks: HashMap<PathBuf, Symlink> = HashMap::new();
+
                     for id in affected_ids {
-                        if let Some(patch) = compute_and_apply_changes(&mut tree, &self.vfs, id) {
+                        if let Some(patch) =
+                            compute_and_apply_changes(&mut tree, &self.vfs, id, &mut symlinks)
+                        {
                             applied_patches.push(patch);
                         }
                     }
@@ -254,7 +261,12 @@ impl JobThreadContext {
     }
 }
 
-fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<AppliedPatchSet> {
+fn compute_and_apply_changes(
+    tree: &mut RojoTree,
+    vfs: &Vfs,
+    id: Ref,
+    symlinks: &mut HashMap<PathBuf, Symlink>,
+) -> Option<AppliedPatchSet> {
     let metadata = tree
         .get_metadata(id)
         .expect("metadata missing for instance present in tree");
@@ -280,7 +292,7 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
                 // path still exists. We can generate a snapshot starting at
                 // that path and use it as the source for our patch.
 
-                let snapshot = match snapshot_from_vfs(&metadata.context, &vfs, &path) {
+                let snapshot = match snapshot_from_vfs(&metadata.context, &vfs, &path, symlinks) {
                     Ok(Some(snapshot)) => snapshot,
                     Ok(None) => {
                         log::error!(
@@ -326,6 +338,7 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
                 &metadata.context,
                 &project_path,
                 instance_name,
+                symlinks,
                 project_node,
                 &vfs,
                 parent_class.as_ref().map(|name| name.as_str()),

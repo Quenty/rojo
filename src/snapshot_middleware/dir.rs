@@ -1,12 +1,22 @@
-use std::path::Path;
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use memofs::{DirEntry, IoResultExt, Vfs};
 
 use crate::snapshot::{InstanceContext, InstanceMetadata, InstanceSnapshot};
 
-use super::{meta_file::DirectoryMetadata, middleware::SnapshotInstanceResult, snapshot_from_vfs};
+use super::{
+    meta_file::DirectoryMetadata, middleware::SnapshotInstanceResult, snapshot_from_vfs, Symlink,
+};
 
-pub fn snapshot_dir(context: &InstanceContext, vfs: &Vfs, path: &Path) -> SnapshotInstanceResult {
+pub fn snapshot_dir(
+    context: &InstanceContext,
+    vfs: &Vfs,
+    path: &Path,
+    symlinks: &mut HashMap<PathBuf, Symlink>,
+) -> SnapshotInstanceResult {
     let passes_filter_rules = |child: &DirEntry| {
         context
             .path_ignore_rules
@@ -23,7 +33,7 @@ pub fn snapshot_dir(context: &InstanceContext, vfs: &Vfs, path: &Path) -> Snapsh
             continue;
         }
 
-        if let Some(child_snapshot) = snapshot_from_vfs(context, vfs, entry.path())? {
+        if let Some(child_snapshot) = snapshot_from_vfs(context, vfs, entry.path(), symlinks)? {
             snapshot_children.push(child_snapshot);
         }
     }
@@ -82,10 +92,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_dir(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .unwrap()
-                .unwrap();
+        let instance_snapshot = snapshot_dir(
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+            &mut HashMap::new(),
+        )
+        .unwrap()
+        .unwrap();
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }
@@ -103,10 +117,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_dir(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .unwrap()
-                .unwrap();
+        let instance_snapshot = snapshot_dir(
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+            &mut HashMap::new(),
+        )
+        .unwrap()
+        .unwrap();
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }

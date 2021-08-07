@@ -236,6 +236,7 @@ mod test {
         let snapshot_id = Ref::new();
         let snapshot = InstanceSnapshot {
             snapshot_id: Some(snapshot_id),
+            symlink_canonical: None,
             properties: hashmap! {
                 "Self".to_owned() => Variant::Ref(snapshot_id),
             },
@@ -278,12 +279,14 @@ mod test {
         let snapshot_id = Ref::new();
         let snapshot = InstanceSnapshot {
             snapshot_id: Some(snapshot_id),
+            symlink_canonical: None,
             children: vec![InstanceSnapshot {
                 properties: hashmap! {
                     "Self".to_owned() => Variant::Ref(snapshot_id),
                 },
 
                 snapshot_id: None,
+                symlink_canonical: None,
                 metadata: Default::default(),
                 name: Cow::Borrowed("child"),
                 class_name: Cow::Borrowed("child"),
@@ -303,6 +306,7 @@ mod test {
                 parent_id: root_id,
                 instance: InstanceSnapshot {
                     snapshot_id: None,
+                    symlink_canonical: None,
                     metadata: Default::default(),
                     properties: hashmap! {
                         "Self".to_owned() => Variant::Ref(root_id),

@@ -1,4 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, path::Path};
+use std::{
+    borrow::Cow,
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{bail, Context};
 use memofs::Vfs;
@@ -11,12 +15,13 @@ use crate::{
     },
 };
 
-use super::{middleware::SnapshotInstanceResult, snapshot_from_vfs};
+use super::{middleware::SnapshotInstanceResult, snapshot_from_vfs, Symlink};
 
 pub fn snapshot_project(
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
+    symlinks: &mut HashMap<PathBuf, Symlink>,
 ) -> SnapshotInstanceResult {
     let project = Project::load_from_slice(&vfs.read(path)?, path)
         .with_context(|| format!("File was not a valid Rojo project: {}", path.display()))?;
@@ -32,8 +37,16 @@ pub fn snapshot_project(
 
     // TODO: If this project node is a path to an instance that Rojo doesn't
     // understand, this may panic!
-    let mut snapshot =
-        snapshot_project_node(&context, path, &project.name, &project.tree, vfs, None)?.unwrap();
+    let mut snapshot = snapshot_project_node(
+        &context,
+        path,
+        &project.name,
+        symlinks,
+        &project.tree,
+        vfs,
+        None,
+    )?
+    .unwrap();
 
     // Setting the instigating source to the project file path is a little
     // coarse.
@@ -60,6 +73,7 @@ pub fn snapshot_project_node(
     context: &InstanceContext,
     project_path: &Path,
     instance_name: &str,
+    symlinks: &mut HashMap<PathBuf, Symlink>,
     node: &ProjectNode,
     vfs: &Vfs,
     parent_class: Option<&str>,
@@ -86,7 +100,7 @@ pub fn snapshot_project_node(
             Cow::Borrowed(path)
         };
 
-        if let Some(snapshot) = snapshot_from_vfs(context, vfs, &path)? {
+        if let Some(snapshot) = snapshot_from_vfs(context, vfs, &path, symlinks)? {
             class_name_from_path = Some(snapshot.class_name);
 
             // Properties from the snapshot are pulled in unchanged, and
@@ -109,7 +123,11 @@ pub fn snapshot_project_node(
         } else {
             // TODO: Should this issue an error instead?
             log::warn!(
-                "$path referred to a path that could not be turned into an instance by Rojo"
+                "$path {0} referred to a path that could not be turned into an instance by Rojo",
+                match path.to_owned().to_str() {
+                    Some(output_path) => output_path.to_owned(),
+                    _ => "bad path".to_owned(),
+                }
             );
         }
     }
@@ -180,6 +198,7 @@ pub fn snapshot_project_node(
             context,
             project_path,
             child_name,
+            symlinks,
             child_project_node,
             vfs,
             Some(&class_name),
@@ -239,6 +258,7 @@ pub fn snapshot_project_node(
 
     Ok(Some(InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         name,
         class_name,
         properties,
@@ -304,10 +324,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_project(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .expect("snapshot error")
-                .expect("snapshot returned no instances");
+        let instance_snapshot = snapshot_project(
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+            &mut HashMap::new(),
+        )
+        .expect("snapshot error")
+        .expect("snapshot returned no instances");
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }
@@ -338,6 +362,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/hello.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -377,6 +402,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -413,6 +439,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -450,6 +477,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -484,6 +512,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -525,6 +554,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -570,6 +600,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");
@@ -620,6 +651,7 @@ mod test {
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
+            &mut HashMap::new(),
         )
         .expect("snapshot error")
         .expect("snapshot returned no instances");

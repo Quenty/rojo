@@ -89,6 +89,7 @@ impl JsonModelCore {
 
         Ok(InstanceSnapshot {
             snapshot_id: None,
+            symlink_canonical: None,
             metadata: Default::default(),
             name: Cow::Owned(name),
             class_name: Cow::Owned(class_name),

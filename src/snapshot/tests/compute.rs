@@ -16,6 +16,7 @@ fn set_name_and_class_name() {
 
     let snapshot = InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         metadata: Default::default(),
         name: Cow::Borrowed("Some Folder"),
         class_name: Cow::Borrowed("Folder"),
@@ -38,6 +39,7 @@ fn set_property() {
 
     let snapshot = InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         metadata: Default::default(),
         name: Cow::Borrowed("ROOT"),
         class_name: Cow::Borrowed("ROOT"),
@@ -71,6 +73,7 @@ fn remove_property() {
 
     let snapshot = InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         metadata: Default::default(),
         name: Cow::Borrowed("ROOT"),
         class_name: Cow::Borrowed("ROOT"),
@@ -93,12 +96,14 @@ fn add_child() {
 
     let snapshot = InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         metadata: Default::default(),
         name: Cow::Borrowed("ROOT"),
         class_name: Cow::Borrowed("ROOT"),
         properties: Default::default(),
         children: vec![InstanceSnapshot {
             snapshot_id: None,
+            symlink_canonical: None,
             metadata: Default::default(),
             name: Cow::Borrowed("New"),
             class_name: Cow::Borrowed("Folder"),
@@ -132,6 +137,7 @@ fn remove_child() {
 
     let snapshot = InstanceSnapshot {
         snapshot_id: None,
+        symlink_canonical: None,
         metadata: Default::default(),
         name: Cow::Borrowed("ROOT"),
         class_name: Cow::Borrowed("ROOT"),

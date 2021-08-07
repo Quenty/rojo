@@ -2,13 +2,13 @@
 
 use std::{borrow::Cow, collections::HashMap};
 
+use super::InstanceMetadata;
 use rbx_dom_weak::{
     types::{Ref, Variant},
     WeakDom,
 };
 use serde::{Deserialize, Serialize};
-
-use super::InstanceMetadata;
+use std::path::PathBuf;
 
 /// A lightweight description of what an instance should look like.
 ///
@@ -20,6 +20,9 @@ pub struct InstanceSnapshot {
     // FIXME: Don't use Option<Ref> anymore!
     /// A temporary ID applied to the snapshot that's used for Ref properties.
     pub snapshot_id: Option<Ref>,
+
+    /// This instances canonical symlink path
+    pub symlink_canonical: Option<PathBuf>,
 
     /// Rojo-specific metadata associated with the instance.
     pub metadata: InstanceMetadata,
@@ -43,6 +46,7 @@ impl InstanceSnapshot {
     pub fn new() -> Self {
         Self {
             snapshot_id: None,
+            symlink_canonical: None,
             metadata: InstanceMetadata::default(),
             name: Cow::Borrowed("DEFAULT"),
             class_name: Cow::Borrowed("DEFAULT"),
@@ -95,6 +99,13 @@ impl InstanceSnapshot {
         }
     }
 
+    pub fn symlink_canonical(self, symlink_canonical: Option<PathBuf>) -> Self {
+        Self {
+            symlink_canonical,
+            ..self
+        }
+    }
+
     pub fn metadata(self, metadata: impl Into<InstanceMetadata>) -> Self {
         Self {
             metadata: metadata.into(),
@@ -114,6 +125,7 @@ impl InstanceSnapshot {
 
         Self {
             snapshot_id: Some(id),
+            symlink_canonical: None,
             metadata: InstanceMetadata::default(),
             name: Cow::Owned(instance.name.clone()),
             class_name: Cow::Owned(instance.class.clone()),
