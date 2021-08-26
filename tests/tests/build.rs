@@ -54,6 +54,7 @@ gen_build_tests! {
     txt_in_folder,
     unresolved_values,
     weldconstraint,
+    optional,
 }
 
 fn run_build_test(test_name: &str) {
