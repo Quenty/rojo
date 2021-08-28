@@ -117,11 +117,16 @@ impl Iterator for ReadDir {
 #[derive(Debug)]
 pub struct Metadata {
     pub(crate) is_file: bool,
+    pub(crate) is_symlink: bool,
 }
 
 impl Metadata {
     pub fn is_file(&self) -> bool {
         self.is_file
+    }
+
+    pub fn is_symlink(&self) -> bool {
+        self.is_symlink
     }
 
     pub fn is_dir(&self) -> bool {

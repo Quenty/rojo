@@ -226,8 +226,14 @@ impl VfsBackend for InMemoryFs {
         let inner = self.inner.lock().unwrap();
 
         match inner.entries.get(path) {
-            Some(Entry::File { .. }) => Ok(Metadata { is_file: true }),
-            Some(Entry::Dir { .. }) => Ok(Metadata { is_file: false }),
+            Some(Entry::File { .. }) => Ok(Metadata {
+                is_file: true,
+                is_symlink: false,
+            }),
+            Some(Entry::Dir { .. }) => Ok(Metadata {
+                is_file: false,
+                is_symlink: false,
+            }),
             None => not_found(path),
         }
     }
