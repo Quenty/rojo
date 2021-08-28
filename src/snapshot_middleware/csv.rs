@@ -51,12 +51,13 @@ pub fn snapshot_csv(
 /// csv named `init.csv`
 /// their parents, which acts similarly to `__init__.py` from the Python world.
 pub fn snapshot_csv_init(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     init_path: &Path,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
     let folder_path = init_path.parent().unwrap();
-    let dir_snapshot = snapshot_dir_no_meta(context, vfs, folder_path)?.unwrap();
+    let dir_snapshot = snapshot_dir_no_meta(symlinks, context, vfs, folder_path)?.unwrap();
 
     if dir_snapshot.class_name != "Folder" {
         anyhow::bail!(
