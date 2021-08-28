@@ -14,6 +14,7 @@ mod meta_file;
 mod project;
 mod rbxm;
 mod rbxmx;
+mod symlink;
 mod txt;
 mod util;
 
@@ -42,6 +43,7 @@ pub use self::project::snapshot_project_node;
 /// at any path and will return something if Rojo knows how to deal with it.
 #[profiling::function]
 pub fn snapshot_from_vfs(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
@@ -51,48 +53,51 @@ pub fn snapshot_from_vfs(
         None => return Ok(None),
     };
 
-    if meta.is_dir() {
+    if meta.is_symlink() {
+        let canonical = vfs.canonicalize(path)?;
+        symlink::snapshot_symlink(symlinks, context, vfs, path, canonical.as_path())
+    } else if meta.is_dir() {
         let project_path = path.join("default.project.json");
         if vfs.metadata(&project_path).with_not_found()?.is_some() {
-            return snapshot_project(context, vfs, &project_path);
+            return snapshot_project(symlinks, context, vfs, &project_path);
         }
 
         let init_path = path.join("init.luau");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.lua");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.server.luau");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.server.lua");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.client.luau");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.client.lua");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_lua_init(context, vfs, &init_path);
+            return snapshot_lua_init(symlinks, context, vfs, &init_path);
         }
 
         let init_path = path.join("init.csv");
         if vfs.metadata(&init_path).with_not_found()?.is_some() {
-            return snapshot_csv_init(context, vfs, &init_path);
+            return snapshot_csv_init(symlinks, context, vfs, &init_path);
         }
 
-        snapshot_dir(context, vfs, path)
+        snapshot_dir(symlinks, context, vfs, path)
     } else {
         let script_name = path
             .file_name_trim_end(".lua")
@@ -109,7 +114,7 @@ pub fn snapshot_from_vfs(
                 _ => return snapshot_lua(context, vfs, path),
             }
         } else if path.file_name_ends_with(".project.json") {
-            return snapshot_project(context, vfs, path);
+            return snapshot_project(symlinks, context, vfs, path);
         } else if path.file_name_ends_with(".model.json") {
             return snapshot_json_model(context, vfs, path);
         } else if path.file_name_ends_with(".meta.json") {
