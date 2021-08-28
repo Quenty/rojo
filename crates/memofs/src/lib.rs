@@ -72,6 +72,7 @@ pub trait VfsBackend: sealed::Sealed + Send + 'static {
     fn write(&mut self, path: &Path, data: &[u8]) -> io::Result<()>;
     fn read_dir(&mut self, path: &Path) -> io::Result<ReadDir>;
     fn metadata(&mut self, path: &Path) -> io::Result<Metadata>;
+    fn canonicalize(&mut self, path: &Path) -> io::Result<PathBuf>;
     fn remove_file(&mut self, path: &Path) -> io::Result<()>;
     fn remove_dir_all(&mut self, path: &Path) -> io::Result<()>;
 
@@ -192,6 +193,11 @@ impl VfsInner {
     fn metadata<P: AsRef<Path>>(&mut self, path: P) -> io::Result<Metadata> {
         let path = path.as_ref();
         self.backend.metadata(path)
+    }
+
+    fn canonicalize<P: AsRef<Path>>(&mut self, path: P) -> io::Result<PathBuf> {
+        let path = path.as_ref();
+        self.backend.canonicalize(path)
     }
 
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
@@ -317,6 +323,13 @@ impl Vfs {
     pub fn metadata<P: AsRef<Path>>(&self, path: P) -> io::Result<Metadata> {
         let path = path.as_ref();
         self.inner.lock().unwrap().metadata(path)
+    }
+
+    /// Returns the canonical, absolute form of a path with all intermediate components normalized and symbolic links resolved.
+    #[inline]
+    pub fn canonicalize<P: AsRef<Path>>(&self, path: P) -> io::Result<PathBuf> {
+        let path = path.as_ref();
+        self.inner.lock().unwrap().canonicalize(path)
     }
 
     /// Retrieve a handle to the event receiver for this `Vfs`.
