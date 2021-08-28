@@ -1,4 +1,5 @@
 use std::{
+    borrow::BorrowMut,
     fs,
     sync::{Arc, Mutex},
 };
@@ -47,6 +48,7 @@ impl ChangeProcessor {
     /// Spin up the ChangeProcessor, connecting it to the given tree, VFS, and
     /// outbound message queue.
     pub fn start(
+        symlinks: Arc<Mutex<crate::snapshot::Symlinks>>,
         tree: Arc<Mutex<RojoTree>>,
         vfs: Arc<Vfs>,
         message_queue: Arc<MessageQueue<AppliedPatchSet>>,
@@ -55,6 +57,7 @@ impl ChangeProcessor {
         let (shutdown_sender, shutdown_receiver) = crossbeam_channel::bounded(1);
         let vfs_receiver = vfs.event_receiver();
         let task = JobThreadContext {
+            symlinks,
             tree,
             vfs,
             message_queue,
@@ -102,6 +105,9 @@ impl Drop for ChangeProcessor {
 
 /// Contains all of the state needed to synchronize the DOM and VFS.
 struct JobThreadContext {
+    /// Symlink data
+    symlinks: Arc<Mutex<crate::snapshot::Symlinks>>,
+
     /// A handle to the DOM we're managing.
     tree: Arc<Mutex<RojoTree>>,
 
@@ -127,6 +133,7 @@ impl JobThreadContext {
         let applied_patches = match event {
             VfsEvent::Create(path) | VfsEvent::Remove(path) | VfsEvent::Write(path) => {
                 let mut tree = self.tree.lock().unwrap();
+                let mut symlinks = self.symlinks.lock().unwrap();
                 let mut applied_patches = Vec::new();
 
                 // Find the nearest ancestor to this path that has
@@ -152,7 +159,9 @@ impl JobThreadContext {
                 };
 
                 for id in affected_ids {
-                    if let Some(patch) = compute_and_apply_changes(&mut tree, &self.vfs, id) {
+                    if let Some(patch) =
+                        compute_and_apply_changes(&mut symlinks, &mut tree, &self.vfs, id)
+                    {
                         if !patch.is_empty() {
                             applied_patches.push(patch);
                         }
@@ -177,6 +186,7 @@ impl JobThreadContext {
 
         let applied_patch = {
             let mut tree = self.tree.lock().unwrap();
+            let mut symlinks = self.symlinks.lock().unwrap();
 
             for &id in &patch_set.removed_instances {
                 if let Some(instance) = tree.get_instance(id) {
@@ -253,7 +263,7 @@ impl JobThreadContext {
                 }
             }
 
-            apply_patch_set(&mut tree, patch_set)
+            apply_patch_set(&mut symlinks, &mut tree, patch_set)
         };
 
         if !applied_patch.is_empty() {
@@ -262,7 +272,12 @@ impl JobThreadContext {
     }
 }
 
-fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<AppliedPatchSet> {
+fn compute_and_apply_changes(
+    symlinks: &mut crate::snapshot::Symlinks,
+    tree: &mut RojoTree,
+    vfs: &Vfs,
+    id: Ref,
+) -> Option<AppliedPatchSet> {
     let metadata = tree
         .get_metadata(id)
         .expect("metadata missing for instance present in tree");
@@ -284,11 +299,14 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
     let applied_patch_set = match instigating_source {
         InstigatingSource::Path(path) => match vfs.metadata(path).with_not_found() {
             Ok(Some(_)) => {
+                let mut symlinks = symlinks.borrow_mut();
+
                 // Our instance was previously created from a path and that
                 // path still exists. We can generate a snapshot starting at
                 // that path and use it as the source for our patch.
 
-                let snapshot = match snapshot_from_vfs(&metadata.context, vfs, path) {
+                let snapshot = match snapshot_from_vfs(&mut symlinks, &metadata.context, vfs, path)
+                {
                     Ok(snapshot) => snapshot,
                     Err(err) => {
                         log::error!("Snapshot error: {:?}", err);
@@ -296,10 +314,12 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
                     }
                 };
 
-                let patch_set = compute_patch_set(snapshot, tree, id);
-                apply_patch_set(tree, patch_set)
+                let patch_set = compute_patch_set(&mut symlinks, snapshot, tree, id);
+                apply_patch_set(&mut symlinks, tree, patch_set)
             }
             Ok(None) => {
+                let mut symlinks = symlinks.borrow_mut();
+
                 // Our instance was previously created from a path, but that
                 // path no longer exists.
                 //
@@ -309,7 +329,7 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
                 let mut patch_set = PatchSet::new();
                 patch_set.removed_instances.push(id);
 
-                apply_patch_set(tree, patch_set)
+                apply_patch_set(&mut symlinks, tree, patch_set)
             }
             Err(err) => {
                 log::error!("Error processing filesystem change: {:?}", err);
@@ -318,11 +338,13 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
         },
 
         InstigatingSource::ProjectNode(project_path, instance_name, project_node, parent_class) => {
+            let mut symlinks = symlinks.borrow_mut();
+
             // This instance is the direct subject of a project node. Since
             // there might be information associated with our instance from
             // the project file, we snapshot the entire project node again.
-
             let snapshot_result = snapshot_project_node(
+                &mut symlinks,
                 &metadata.context,
                 project_path,
                 instance_name,
@@ -339,8 +361,8 @@ fn compute_and_apply_changes(tree: &mut RojoTree, vfs: &Vfs, id: Ref) -> Option<
                 }
             };
 
-            let patch_set = compute_patch_set(snapshot, tree, id);
-            apply_patch_set(tree, patch_set)
+            let patch_set = compute_patch_set(&mut symlinks, snapshot, &tree, id);
+            apply_patch_set(&mut symlinks, tree, patch_set)
         }
     };
 
