@@ -103,6 +103,7 @@ pub fn snapshot_lua(
 /// Scripts named `init.lua`, `init.server.lua`, or `init.client.lua` usurp
 /// their parents, which acts similarly to `__init__.py` from the Python world.
 pub fn snapshot_lua_init(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     init_path: &Path,
@@ -110,7 +111,7 @@ pub fn snapshot_lua_init(
     script_type: ScriptType,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
     let folder_path = init_path.parent().unwrap();
-    let dir_snapshot = snapshot_dir_no_meta(context, vfs, folder_path, name)?.unwrap();
+    let dir_snapshot = snapshot_dir_no_meta(symlinks, context, vfs, folder_path, name)?.unwrap();
 
     if dir_snapshot.class_name != "Folder" {
         anyhow::bail!(
@@ -391,6 +392,7 @@ mod test {
         let vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_lua_init(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::with_emit_legacy_scripts(Some(true)),
             &vfs,
             Path::new("/root/init.lua"),
@@ -423,6 +425,7 @@ mod test {
         let vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_lua_init(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::with_emit_legacy_scripts(Some(true)),
             &vfs,
             Path::new("/root/init.lua"),

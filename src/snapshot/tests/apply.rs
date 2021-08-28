@@ -26,7 +26,8 @@ fn set_name_and_class_name() {
         ..Default::default()
     };
 
-    let applied_patch_set = apply_patch_set(&mut tree, patch_set);
+    let applied_patch_set =
+        apply_patch_set(&mut crate::snapshot::Symlinks::new(), &mut tree, patch_set);
 
     let tree_view = view_tree(&tree, &mut redactions);
     assert_yaml_snapshot!(tree_view);
@@ -53,7 +54,8 @@ fn add_property() {
         ..Default::default()
     };
 
-    let applied_patch_set = apply_patch_set(&mut tree, patch_set);
+    let applied_patch_set =
+        apply_patch_set(&mut crate::snapshot::Symlinks::new(), &mut tree, patch_set);
 
     let tree_view = view_tree(&tree, &mut redactions);
     assert_yaml_snapshot!(tree_view);
@@ -92,7 +94,8 @@ fn remove_property() {
         ..Default::default()
     };
 
-    let applied_patch_set = apply_patch_set(&mut tree, patch_set);
+    let applied_patch_set =
+        apply_patch_set(&mut crate::snapshot::Symlinks::new(), &mut tree, patch_set);
 
     let tree_view = view_tree(&tree, &mut redactions);
     assert_yaml_snapshot!("remove_property_after_patch", tree_view);
