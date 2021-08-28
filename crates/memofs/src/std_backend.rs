@@ -87,10 +87,12 @@ impl VfsBackend for StdBackend {
     }
 
     fn metadata(&mut self, path: &Path) -> io::Result<Metadata> {
-        let inner = fs_err::metadata(path)?;
+        let inner = fs_err::symlink_metadata(path)?;
+        let filetype = inner.file_type();
 
         Ok(Metadata {
-            is_file: inner.is_file(),
+            is_file: filetype.is_file(),
+            is_symlink: filetype.is_symlink(),
         })
     }
 
