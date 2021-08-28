@@ -7,11 +7,12 @@ use crate::snapshot::{InstanceContext, InstanceMetadata, InstanceSnapshot};
 use super::{meta_file::DirectoryMetadata, snapshot_from_vfs};
 
 pub fn snapshot_dir(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
-    let mut snapshot = match snapshot_dir_no_meta(context, vfs, path)? {
+    let mut snapshot = match snapshot_dir_no_meta(symlinks, context, vfs, path)? {
         Some(snapshot) => snapshot,
         None => return Ok(None),
     };
@@ -41,6 +42,7 @@ pub fn dir_meta(vfs: &Vfs, path: &Path) -> anyhow::Result<Option<DirectoryMetada
 /// example, this can happen if the directory contains an `init.client.lua`
 /// file.
 pub fn snapshot_dir_no_meta(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
@@ -61,7 +63,7 @@ pub fn snapshot_dir_no_meta(
             continue;
         }
 
-        if let Some(child_snapshot) = snapshot_from_vfs(context, vfs, entry.path())? {
+        if let Some(child_snapshot) = snapshot_from_vfs(symlinks, context, vfs, entry.path())? {
             snapshot_children.push(child_snapshot);
         }
     }
@@ -118,10 +120,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_dir(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .unwrap()
-                .unwrap();
+        let instance_snapshot = snapshot_dir(
+            &mut crate::snapshot::Symlinks::new(),
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+        )
+        .unwrap()
+        .unwrap();
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }
@@ -139,10 +145,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_dir(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .unwrap()
-                .unwrap();
+        let instance_snapshot = snapshot_dir(
+            &mut crate::snapshot::Symlinks::new(),
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+        )
+        .unwrap()
+        .unwrap();
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }
