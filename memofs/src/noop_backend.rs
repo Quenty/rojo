@@ -1,5 +1,5 @@
-use std::io;
 use std::path::Path;
+use std::{io, path::PathBuf};
 
 use crate::{Metadata, ReadDir, VfsBackend, VfsEvent};
 
@@ -50,6 +50,13 @@ impl VfsBackend for NoopBackend {
     }
 
     fn metadata(&mut self, _path: &Path) -> io::Result<Metadata> {
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "NoopBackend doesn't do anything",
+        ))
+    }
+
+    fn canonicalize(&mut self, _path: &Path) -> io::Result<PathBuf> {
         Err(io::Error::new(
             io::ErrorKind::Other,
             "NoopBackend doesn't do anything",
