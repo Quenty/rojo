@@ -14,6 +14,7 @@ use crate::{
 use super::snapshot_from_vfs;
 
 pub fn snapshot_project(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
@@ -30,7 +31,15 @@ pub fn snapshot_project(
 
     context.add_path_ignore_rules(rules);
 
-    match snapshot_project_node(&context, path, &project.name, &project.tree, vfs, None)? {
+    match snapshot_project_node(
+        symlinks,
+        &context,
+        path,
+        &project.name,
+        &project.tree,
+        vfs,
+        None,
+    )? {
         Some(found_snapshot) => {
             let mut snapshot = found_snapshot;
             // Setting the instigating source to the project file path is a little
@@ -58,6 +67,7 @@ pub fn snapshot_project(
 }
 
 pub fn snapshot_project_node(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     project_path: &Path,
     instance_name: &str,
@@ -74,6 +84,7 @@ pub fn snapshot_project_node(
     let mut class_name_from_path = None;
 
     let name = Cow::Owned(instance_name.to_owned());
+    let mut id: Option<rbx_dom_weak::types::Ref> = None;
     let mut properties = HashMap::new();
     let mut children = Vec::new();
     let mut metadata = InstanceMetadata::default();
@@ -89,8 +100,9 @@ pub fn snapshot_project_node(
             Cow::Borrowed(path)
         };
 
-        if let Some(snapshot) = snapshot_from_vfs(context, vfs, &path)? {
+        if let Some(snapshot) = snapshot_from_vfs(symlinks, context, vfs, &path)? {
             class_name_from_path = Some(snapshot.class_name);
+            id = snapshot.snapshot_id;
 
             // Properties from the snapshot are pulled in unchanged, and
             // overridden by properties set on the project node.
@@ -201,6 +213,7 @@ pub fn snapshot_project_node(
 
     for (child_name, child_project_node) in &node.children {
         if let Some(child) = snapshot_project_node(
+            symlinks,
             context,
             project_path,
             child_name,
@@ -262,7 +275,7 @@ pub fn snapshot_project_node(
     ));
 
     Ok(Some(InstanceSnapshot {
-        snapshot_id: None,
+        snapshot_id: id,
         name,
         class_name,
         properties,
@@ -328,10 +341,14 @@ mod test {
 
         let mut vfs = Vfs::new(imfs);
 
-        let instance_snapshot =
-            snapshot_project(&InstanceContext::default(), &mut vfs, Path::new("/foo"))
-                .expect("snapshot error")
-                .expect("snapshot returned no instances");
+        let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
+            &InstanceContext::default(),
+            &mut vfs,
+            Path::new("/foo"),
+        )
+        .expect("snapshot error")
+        .expect("snapshot returned no instances");
 
         insta::assert_yaml_snapshot!(instance_snapshot);
     }
@@ -359,6 +376,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/hello.project.json"),
@@ -397,6 +415,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
@@ -433,6 +452,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
@@ -470,6 +490,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo.project.json"),
@@ -504,6 +525,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
@@ -545,6 +567,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
@@ -590,6 +613,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),
@@ -640,6 +664,7 @@ mod test {
         let mut vfs = Vfs::new(imfs);
 
         let instance_snapshot = snapshot_project(
+            &mut crate::snapshot::Symlinks::new(),
             &InstanceContext::default(),
             &mut vfs,
             Path::new("/foo/default.project.json"),

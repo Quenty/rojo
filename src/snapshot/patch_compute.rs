@@ -11,6 +11,7 @@ use super::{
 };
 
 pub fn compute_patch_set(
+    symlinks: &mut crate::snapshot::Symlinks,
     snapshot: &Option<InstanceSnapshot>,
     tree: &RojoTree,
     id: Ref,
@@ -19,8 +20,18 @@ pub fn compute_patch_set(
 
     if let Some(snapshot) = snapshot {
         let mut context = ComputePatchContext::default();
+        crate::snapshot::symlink::link_symlink_id_to_point_to_id(
+            &mut context.snapshot_id_to_instance_id,
+            symlinks,
+        );
 
         compute_patch_set_internal(&mut context, snapshot, tree, id, &mut patch_set);
+
+        // Write our symlinks before we do these things
+        crate::snapshot::symlink::link_old_ids_to_new_ids_and_update_symlink(
+            &mut context.snapshot_id_to_instance_id,
+            symlinks,
+        );
 
         // Rewrite Ref properties to refer to instance IDs instead of snapshot IDs
         // for all of the IDs that we know about so far.
@@ -257,7 +268,12 @@ mod test {
             children: Vec::new(),
         };
 
-        let patch_set = compute_patch_set(&Some(snapshot), &tree, root_id);
+        let patch_set = compute_patch_set(
+            &mut crate::snapshot::Symlinks::new(),
+            &Some(snapshot),
+            &tree,
+            root_id,
+        );
 
         let expected_patch_set = PatchSet {
             updated_instances: vec![PatchUpdate {
@@ -307,7 +323,12 @@ mod test {
             class_name: Cow::Borrowed("foo"),
         };
 
-        let patch_set = compute_patch_set(&Some(snapshot), &tree, root_id);
+        let patch_set = compute_patch_set(
+            &mut crate::snapshot::Symlinks::new(),
+            &Some(snapshot),
+            &tree,
+            root_id,
+        );
 
         let expected_patch_set = PatchSet {
             added_instances: vec![PatchAdd {
