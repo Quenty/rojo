@@ -14,6 +14,7 @@ mod meta_file;
 mod project;
 mod rbxm;
 mod rbxmx;
+mod symlink;
 mod toml;
 mod txt;
 mod util;
@@ -51,6 +52,7 @@ pub use self::{project::snapshot_project_node, util::emit_legacy_scripts_default
 /// the path into an InstanceSnapshot using that middleware.
 #[profiling::function]
 pub fn snapshot_from_vfs(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
@@ -60,7 +62,10 @@ pub fn snapshot_from_vfs(
         None => return Ok(None),
     };
 
-    if meta.is_dir() {
+    if meta.is_symlink() {
+        let canonical = vfs.canonicalize(path)?;
+        symlink::snapshot_symlink(symlinks, context, vfs, path, canonical.as_path())
+    } else if meta.is_dir() {
         if let Some(init_path) = get_init_path(vfs, path)? {
             // TODO: support user-defined init paths
             for rule in default_sync_rules() {
@@ -71,28 +76,40 @@ pub fn snapshot_from_vfs(
                                 .parent()
                                 .and_then(Path::file_name)
                                 .and_then(|s| s.to_str()).expect("default.project.json should be inside a folder with a unicode name");
-                            snapshot_project(context, vfs, &init_path, name)
+                            snapshot_project(symlinks, context, vfs, &init_path, name)
                         }
 
-                        Middleware::ModuleScript => {
-                            snapshot_lua_init(context, vfs, &init_path, ScriptType::Module)
-                        }
-                        Middleware::ServerScript => {
-                            snapshot_lua_init(context, vfs, &init_path, ScriptType::Server)
-                        }
-                        Middleware::ClientScript => {
-                            snapshot_lua_init(context, vfs, &init_path, ScriptType::Client)
-                        }
+                        Middleware::ModuleScript => snapshot_lua_init(
+                            symlinks,
+                            context,
+                            vfs,
+                            &init_path,
+                            ScriptType::Module,
+                        ),
+                        Middleware::ServerScript => snapshot_lua_init(
+                            symlinks,
+                            context,
+                            vfs,
+                            &init_path,
+                            ScriptType::Server,
+                        ),
+                        Middleware::ClientScript => snapshot_lua_init(
+                            symlinks,
+                            context,
+                            vfs,
+                            &init_path,
+                            ScriptType::Client,
+                        ),
 
-                        Middleware::Csv => snapshot_csv_init(context, vfs, &init_path),
+                        Middleware::Csv => snapshot_csv_init(symlinks, context, vfs, &init_path),
 
-                        _ => snapshot_dir(context, vfs, path),
+                        _ => snapshot_dir(symlinks, context, vfs, path),
                     };
                 }
             }
-            snapshot_dir(context, vfs, path)
+            snapshot_dir(symlinks, context, vfs, path)
         } else {
-            snapshot_dir(context, vfs, path)
+            snapshot_dir(symlinks, context, vfs, path)
         }
     } else {
         let file_name = path
@@ -107,7 +124,7 @@ pub fn snapshot_from_vfs(
             _ => {}
         }
 
-        snapshot_from_path(context, vfs, path)
+        snapshot_from_path(symlinks, context, vfs, path)
     }
 }
 
@@ -163,18 +180,24 @@ fn get_init_path<P: AsRef<Path>>(vfs: &Vfs, dir: P) -> anyhow::Result<Option<Pat
 /// Gets a snapshot for a path given an InstanceContext and Vfs, taking
 /// user specified sync rules into account.
 fn snapshot_from_path(
+    symlinks: &mut crate::snapshot::Symlinks,
     context: &InstanceContext,
     vfs: &Vfs,
     path: &Path,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
     if let Some(rule) = context.get_user_sync_rule(path) {
-        return rule
-            .middleware
-            .snapshot(context, vfs, path, rule.file_name_for_path(path)?);
+        return rule.middleware.snapshot(
+            symlinks,
+            context,
+            vfs,
+            path,
+            rule.file_name_for_path(path)?,
+        );
     } else {
         for rule in default_sync_rules() {
             if rule.matches(path) {
                 return rule.middleware.snapshot(
+                    symlinks,
                     context,
                     vfs,
                     path,
@@ -212,6 +235,7 @@ impl Middleware {
     /// the provided name.
     fn snapshot(
         &self,
+        symlinks: &mut crate::snapshot::Symlinks,
         context: &InstanceContext,
         vfs: &Vfs,
         path: &Path,
@@ -224,7 +248,7 @@ impl Middleware {
             Self::ServerScript => snapshot_lua(context, vfs, path, name, ScriptType::Server),
             Self::ClientScript => snapshot_lua(context, vfs, path, name, ScriptType::Client),
             Self::ModuleScript => snapshot_lua(context, vfs, path, name, ScriptType::Module),
-            Self::Project => snapshot_project(context, vfs, path, name),
+            Self::Project => snapshot_project(symlinks, context, vfs, path, name),
             Self::Rbxm => snapshot_rbxm(context, vfs, path, name),
             Self::Rbxmx => snapshot_rbxmx(context, vfs, path, name),
             Self::Toml => snapshot_toml(context, vfs, path, name),
