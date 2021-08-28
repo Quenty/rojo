@@ -218,6 +218,10 @@ impl VfsBackend for InMemoryFs {
         }
     }
 
+    fn canonicalize(&mut self, _path: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
+    }
+
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
         let inner = self.inner.lock().unwrap();
 
