@@ -125,19 +125,22 @@ impl ServeSession {
 
         let instance_context = InstanceContext::default();
 
+        let mut symlinks = crate::snapshot::Symlinks::new();
+
         log::trace!("Generating snapshot of instances from VFS");
-        let snapshot = snapshot_from_vfs(&instance_context, &vfs, &start_path)?;
+        let snapshot = snapshot_from_vfs(&mut symlinks, &instance_context, &vfs, &start_path)?;
 
         log::trace!("Computing initial patch set");
-        let patch_set = compute_patch_set(snapshot.as_ref(), &tree, root_id);
+        let patch_set = compute_patch_set(&mut symlinks, snapshot.as_ref(), &tree, root_id);
 
         log::trace!("Applying initial patch set");
-        apply_patch_set(&mut tree, patch_set);
+        apply_patch_set(&mut symlinks, &mut tree, patch_set);
 
         let session_id = SessionId::new();
         let message_queue = MessageQueue::new();
 
         let tree = Arc::new(Mutex::new(tree));
+        let symlinks = Arc::new(Mutex::new(symlinks));
         let message_queue = Arc::new(message_queue);
         let vfs = Arc::new(vfs);
 
@@ -145,6 +148,7 @@ impl ServeSession {
 
         log::trace!("Starting ChangeProcessor");
         let change_processor = ChangeProcessor::start(
+            Arc::clone(&symlinks),
             Arc::clone(&tree),
             Arc::clone(&vfs),
             Arc::clone(&message_queue),
