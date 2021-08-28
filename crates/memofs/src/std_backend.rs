@@ -1,8 +1,8 @@
-use std::io;
 use std::path::Path;
 use std::sync::mpsc;
 use std::thread;
 use std::time::Duration;
+use std::{io, path::PathBuf};
 
 use crossbeam_channel::Receiver;
 use notify::{watcher, DebouncedEvent, RecommendedWatcher, RecursiveMode, Watcher};
@@ -92,6 +92,10 @@ impl VfsBackend for StdBackend {
             is_file: filetype.is_file(),
             is_symlink: filetype.is_symlink(),
         })
+    }
+
+    fn canonicalize(&mut self, path: &Path) -> io::Result<PathBuf> {
+        fs_err::canonicalize(path)
     }
 
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
