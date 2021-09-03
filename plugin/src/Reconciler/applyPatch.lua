@@ -27,6 +27,8 @@ local function applyPatch(instanceMap, patch)
 		end
 	end
 
+	local deferredRefs = {}
+
 	for id, virtualInstance in pairs(patch.added) do
 		if instanceMap.fromIds[id] ~= nil then
 			-- This instance already exists. We might've already added it in a
@@ -60,12 +62,12 @@ local function applyPatch(instanceMap, patch)
 			)
 		end
 
-		local failedToReify = reify(instanceMap, patch.added, id, parentInstance)
+		reify.reifyInner(instanceMap, patch.added, id, parentInstance, unappliedPatch, deferredRefs)
 
-		if not PatchSet.isEmpty(failedToReify) then
-			Log.debug("Failed to reify as part of applying a patch: {:#?}", failedToReify)
-			PatchSet.assign(unappliedPatch, failedToReify)
-		end
+		-- if not PatchSet.isEmpty(failedToReify) then
+		-- 	Log.debug("Failed to reify as part of applying a patch: {:#?}", failedToReify)
+		-- 	PatchSet.assign(unappliedPatch, failedToReify)
+		-- end
 	end
 
 	for _, update in ipairs(patch.updated) do
@@ -125,7 +127,7 @@ local function applyPatch(instanceMap, patch)
 				[update.id] = mockVirtualInstance,
 			}
 
-			local failedToReify = reify(instanceMap, mockAdded, update.id, instance.Parent)
+			reify.reifyInner(instanceMap, mockAdded, update.id, instance.Parent, unappliedPatch, deferredRefs)
 
 			local newInstance = instanceMap.fromIds[update.id]
 
@@ -140,9 +142,9 @@ local function applyPatch(instanceMap, patch)
 			-- Here are the non-critical failures. We know that the instance
 			-- succeeded in creating and that assigning Name did not fail, but
 			-- other property assignments might've failed.
-			if not PatchSet.isEmpty(failedToReify) then
-				PatchSet.assign(unappliedPatch, failedToReify)
-			end
+			-- if not PatchSet.isEmpty(failedToReify) then
+			-- 	PatchSet.assign(unappliedPatch, failedToReify)
+			-- end
 
 			-- Watch out, this is the scary part! Move all of the children of
 			-- instance into newInstance.
@@ -197,6 +199,9 @@ local function applyPatch(instanceMap, patch)
 			table.insert(unappliedPatch.updated, unappliedUpdate)
 		end
 	end
+
+	-- Do this at the very end so we can get all updated refs
+	reify.applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
 
 	return unappliedPatch
 end
