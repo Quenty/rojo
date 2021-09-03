@@ -155,4 +155,7 @@ function applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
 	end
 end
 
-return reify
+return {
+	reifyInner = reifyInner,
+	applyDeferredRefs = applyDeferredRefs,
+}
