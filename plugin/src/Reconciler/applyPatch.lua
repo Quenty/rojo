@@ -9,6 +9,7 @@ local ChangeHistoryService = game:GetService("ChangeHistoryService")
 
 local Packages = script.Parent.Parent.Parent.Packages
 local Log = require(Packages.Log)
+local Promise = require(Packages.Promise)
 
 local PatchSet = require(script.Parent.Parent.PatchSet)
 local Types = require(script.Parent.Parent.Types)
@@ -42,7 +43,10 @@ local function applyPatch(instanceMap, patch)
 		end
 	end
 
+	local promises = {}
 	local deferredRefs = {}
+
+	local alreadyProcessedList = {}
 
 	for id, virtualInstance in pairs(patch.added) do
 		if instanceMap.fromIds[id] ~= nil then
@@ -80,7 +84,10 @@ local function applyPatch(instanceMap, patch)
 			)
 		end
 
-		reify.reifyInner(instanceMap, patch.added, id, parentInstance, unappliedPatch, deferredRefs)
+		if not alreadyProcessedList[id] then
+			alreadyProcessedList[id] = true
+			table.insert(promises, reify.reifyInner(instanceMap, patch.added, id, parentInstance, unappliedPatch, deferredRefs))
+		end
 
 		-- if not PatchSet.isEmpty(failedToReify) then
 		-- 	Log.debug("Failed to reify as part of applying a patch: {:#?}", failedToReify)
@@ -145,7 +152,7 @@ local function applyPatch(instanceMap, patch)
 				[update.id] = mockVirtualInstance,
 			}
 
-			reify.reifyInner(instanceMap, mockAdded, update.id, instance.Parent, unappliedPatch, deferredRefs)
+			table.insert(promises, reify.reifyInner(instanceMap, mockAdded, update.id, instance.Parent, unappliedPatch, deferredRefs))
 
 			local newInstance = instanceMap.fromIds[update.id]
 
@@ -227,6 +234,8 @@ local function applyPatch(instanceMap, patch)
 			table.insert(unappliedPatch.updated, unappliedUpdate)
 		end
 	end
+
+	reify.allPromise(promises):await()
 
 	-- Do this at the very end so we can get all updated refs
 	reify.applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
