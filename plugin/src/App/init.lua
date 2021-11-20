@@ -338,6 +338,37 @@ function App:render()
 							}
 						end)
 					end,
+				}),
+				tagButton = e(StudioToggleButton, {
+					name = "Tag",
+					tooltip = "Tag meshes with collision fidelity information",
+					active = false,
+					icon = "",
+					enabled = true,
+					onClick = function()
+						local CollectionService = game:GetService("CollectionService")
+						local Selection = game:GetService("Selection")
+
+						local function process(instance)
+							if instance:IsA("MeshPart") then
+								local fidelity = instance.CollisionFidelity.Name
+								local tags = CollectionService:GetTags(instance)
+
+								for _, tag in ipairs(tags) do
+									CollectionService:RemoveTag(instance, tag)
+								end
+
+								CollectionService:AddTag(instance, "_RojoFidelity_" .. fidelity)
+							end
+						end
+
+						for _, item in pairs(Selection:Get()) do
+							process(item)
+							for _, instance in ipairs(item:GetDescendants()) do
+								process(instance)
+							end
+						end
+					end,
 				})
 			}),
 		}),
