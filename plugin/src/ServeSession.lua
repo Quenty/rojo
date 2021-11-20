@@ -281,16 +281,20 @@ function ServeSession:__initialSync(serverInfo)
 
 			return self.__apiContext:write(inversePatch)
 		elseif userDecision == "Accept" then
-			local unappliedPatch = self.__reconciler:applyPatch(catchUpPatch)
+			return Promise.new(function(resolve)
+				task.spawn(function()
+					local unappliedPatch = self.__reconciler:applyPatch(catchUpPatch)
 
-			if not PatchSet.isEmpty(unappliedPatch) then
-				Log.debug(
-					"Could not apply all changes requested by the Rojo server:\n{}",
-					PatchSet.humanSummary(self.__instanceMap, unappliedPatch)
-				)
-			end
+					if not PatchSet.isEmpty(unappliedPatch) then
+						Log.debug(
+							"Could not apply all changes requested by the Rojo server:\n{}",
+							PatchSet.humanSummary(self.__instanceMap, unappliedPatch)
+						)
+					end
 
-			return Promise.resolve()
+					resolve()
+				end)
+			end)
 		else
 			return Promise.reject("Invalid user decision: " .. userDecision)
 		end
@@ -311,16 +315,22 @@ function ServeSession:__mainSyncLoop()
 
 					Log.trace("Serve session {} retrieved {} messages", tostring(self), #messages)
 
-					for _, message in messages do
-						local unappliedPatch = self.__reconciler:applyPatch(message)
+					return Promise.new(function(innerResolve)
+						task.spawn(function()
+							for _, message in messages do
+								local unappliedPatch = self.__reconciler:applyPatch(message)
 
-						if not PatchSet.isEmpty(unappliedPatch) then
-							Log.debug(
-								"Could not apply all changes requested by the Rojo server:\n{}",
-								PatchSet.humanSummary(self.__instanceMap, unappliedPatch)
-							)
-						end
-					end
+								if not PatchSet.isEmpty(unappliedPatch) then
+									Log.debug(
+										"Could not apply all changes requested by the Rojo server:\n{}",
+										PatchSet.humanSummary(self.__instanceMap, unappliedPatch)
+									)
+								end
+							end
+
+							innerResolve()
+						end)
+					end)
 				end)
 				:await()
 
