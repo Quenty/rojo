@@ -50,11 +50,53 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 		invariant("Cannot reify an instance not present in virtualInstances\nID: {}", id)
 	end
 
-	-- Instance.new can fail if we're passing in something that can't be
-	-- created, like a service, something enabled with a feature flag, or
-	-- something that requires higher security than we have.
-	local ok, instance = pcall(Instance.new, virtualInstance.ClassName)
+	-- HACK TO HANDLE MESH PARTS
+	local ok, instance
 
+	if virtualInstance.ClassName == "MeshPart" and virtualInstance.Properties.MeshId then
+		ok, instance = pcall(function()
+			local meshIdOk, meshId = decodeValue(virtualInstance.Properties.MeshId, instanceMap)
+			if not meshIdOk then
+				error("Not ok meshId")
+			end
+
+			local collisionFidelity
+			if virtualInstance.Properties.CollisionFidelity then
+				local collisionFidelityOk
+				collisionFidelityOk, collisionFidelity = decodeValue(virtualInstance.Properties.CollisionFidelity, instanceMap)
+				if not collisionFidelityOk then
+					error("Not ok collisionFidelityOk")
+				end
+			else
+				collisionFidelity = Enum.CollisionFidelity.Box -- default value
+			end
+
+			local renderFidelity
+			if renderFidelity then
+				local renderFidelityOk
+				renderFidelityOk, renderFidelity = decodeValue(virtualInstance.Properties.RenderFidelity, instanceMap)
+				if not renderFidelityOk then
+					error("Not ok renderFidelity")
+				end
+			else
+				renderFidelity = Enum.RenderFidelity.Precise -- default value
+			end
+
+			print("Please wait... creating mesh part")
+
+			-- blocking, but it's fine.... it's fine...
+			local result = game:GetService("InsertService"):CreateMeshPartAsync(meshId, collisionFidelity, renderFidelity)
+
+			print("Done creating mesh part")
+
+			return result
+		end)
+	else
+		-- Instance.new can fail if we're passing in something that can't be
+		-- created, like a service, something enabled with a feature flag, or
+		-- something that requires higher security than we have.
+		ok, instance = pcall(Instance.new, virtualInstance.ClassName)
+	end
 	if not ok then
 		addAllToPatch(unappliedPatch, virtualInstances, id)
 		return
@@ -68,6 +110,10 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 	local unappliedProperties = {}
 
 	for propertyName, virtualValue in pairs(virtualInstance.Properties) do
+		if propertyName == "MeshId" then
+			continue
+		end
+
 		-- Because refs may refer to instances that we haven't constructed yet,
 		-- we defer applying any ref properties until all instances are created.
 		if next(virtualValue) == "Ref" then
