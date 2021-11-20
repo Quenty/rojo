@@ -2,6 +2,9 @@
 	"Reifies" a virtual DOM, constructing a real DOM with the same shape.
 ]]
 
+local Packages = script.Parent.Parent.Parent.Packages
+local Promise = require(Packages.Promise)
+
 local invariant = require(script.Parent.Parent.invariant)
 local PatchSet = require(script.Parent.Parent.PatchSet)
 local setProperty = require(script.Parent.setProperty)
@@ -27,6 +30,34 @@ local function reify(instanceMap, virtualInstances, rootId, parentInstance)
 	return unappliedPatch
 end
 
+function allPromise(promises)
+	if #promises == 0 then
+		return Promise.resolve()
+	end
+
+	return Promise.new(function(resolve, reject)
+		local remainingCount = #promises
+		local results = {}
+		local allFulfilled = true
+
+		local function syncronize(index, isFullfilled)
+			return function(value)
+				allFulfilled = allFulfilled and isFullfilled
+				results[index] = value
+				remainingCount = remainingCount - 1
+				if remainingCount == 0 then
+					local method = allFulfilled and resolve or reject
+					method(unpack(results, 1, #promises))
+				end
+			end
+		end
+
+		for index, promise in pairs(promises) do
+			promise:andThen(syncronize(index, true), syncronize(index, false))
+		end
+	end)
+end
+
 --[[
 	Add the given ID and all of its descendants in virtualInstances to the given
 	PatchSet, marked for addition.
@@ -40,6 +71,103 @@ local function addAllToPatch(patchSet, virtualInstances, id)
 	end
 end
 
+local promiseLoading = {} -- [meshId][collisionFidelity]
+
+local function promiseGetMesh(meshId, collisionFidelity, renderFidelity, name)
+	if not promiseLoading[meshId] then
+		promiseLoading[meshId] = {}
+	end
+
+	if not promiseLoading[meshId][collisionFidelity] then
+		promiseLoading[meshId][collisionFidelity] = Promise.new(function(resolve)
+			task.spawn(function()
+				local startTime = os.clock()
+
+				print(string.format("Please wait... creating mesh part %q", name))
+
+				local result = game:GetService("AssetService"):CreateMeshPartAsync(meshId, {
+					CollisionFidelity = collisionFidelity,
+					RenderFidelity = renderFidelity,
+				})
+
+				print(string.format("Done creating %q in %0.5f ms", name, (os.clock() - startTime)*1000))
+
+				resolve(result)
+			end)
+		end)
+	end
+
+	return promiseLoading[meshId][collisionFidelity]:andThen(function(template)
+		local copy = template:Clone()
+		copy.CollisionFidelity = collisionFidelity
+		copy.RenderFidelity = renderFidelity
+		return copy
+	end)
+end
+
+local function promiseGetInstance(virtualInstance, instanceMap)
+	return Promise.new(function(resolve, reject)
+		if virtualInstance.ClassName == "MeshPart" and virtualInstance.Properties.MeshId then
+			local meshIdOk, meshId = decodeValue(virtualInstance.Properties.MeshId, instanceMap)
+			if not meshIdOk then
+			 warn("Not ok meshId")
+			 return reject("Not ok meshId")
+			end
+
+			-- Try property
+			local collisionFidelity
+			if virtualInstance.Properties.CollisionFidelity then
+				local collisionFidelityOk
+				collisionFidelityOk, collisionFidelity = decodeValue(virtualInstance.Properties.CollisionFidelity, instanceMap)
+				if not collisionFidelityOk then
+				 warn("Not ok collisionFidelityOk")
+				 return reject("Not ok collisionFidelityOk")
+				end
+			end
+
+			-- Try hacky tag tagging
+			local tagsOk, tagList = decodeValue(virtualInstance.Properties.Tags, instanceMap)
+			if tagsOk then
+				local tagSet = {}
+				for _, item in pairs(tagList) do
+					tagSet[item] = true
+				end
+
+				for _, collisionFidelityType in pairs(Enum.CollisionFidelity:GetEnumItems()) do
+					local tag = "_RojoFidelity_" .. collisionFidelityType.Name
+					if tagSet[tag] then
+						collisionFidelity = collisionFidelityType
+						break
+					end
+				end
+			end
+
+			-- Default
+			if not collisionFidelity then
+				warn(("No collision fidelity on mesh %q, defaulting to box"):format(virtualInstance.Name))
+				collisionFidelity = Enum.CollisionFidelity.Box -- default
+			end
+
+			local renderFidelity
+			if renderFidelity then
+				local renderFidelityOk
+				renderFidelityOk, renderFidelity = decodeValue(virtualInstance.Properties.RenderFidelity, instanceMap)
+				if not renderFidelityOk then
+				 warn("Not ok renderFidelity")
+				 return reject("Not ok renderFidelity")
+				end
+			else
+				renderFidelity = Enum.RenderFidelity.Precise -- default value
+			end
+
+			-- TODO: Not blocking
+			return resolve(promiseGetMesh(meshId, collisionFidelity, renderFidelity, tostring(virtualInstance.Name)))
+		else
+			return resolve(Instance.new(virtualInstance.ClassName))
+		end
+	end)
+end
+
 --[[
 	Inner function that defines the core routine.
 ]]
@@ -50,63 +178,68 @@ function reifyInner(instanceMap, virtualInstances, id, parentInstance, unapplied
 		invariant("Cannot reify an instance not present in virtualInstances\nID: {}", id)
 	end
 
-	-- Instance.new can fail if we're passing in something that can't be
-	-- created, like a service, something enabled with a feature flag, or
-	-- something that requires higher security than we have.
-	local createSuccess, instance = pcall(Instance.new, virtualInstance.ClassName)
 
-	if not createSuccess then
-		addAllToPatch(unappliedPatch, virtualInstances, id)
-		return
-	end
+	return promiseGetInstance(virtualInstance, instanceMap)
+		:andThen(function(instance)
+			-- TODO: Can this fail? Previous versions of Rojo guarded against this, but
+			-- the reason why was uncertain.
+			instance.Name = virtualInstance.Name
 
-	-- TODO: Can this fail? Previous versions of Rojo guarded against this, but
-	-- the reason why was uncertain.
-	instance.Name = virtualInstance.Name
+			-- Track all of the properties that we've failed to assign to this instance.
+			local unappliedProperties = {}
 
-	-- Track all of the properties that we've failed to assign to this instance.
-	local unappliedProperties = {}
+			for propertyName, virtualValue in pairs(virtualInstance.Properties) do
+				-- Because refs may refer to instances that we haven't constructed yet,
+				-- we defer applying any ref properties until all instances are created.
+				if next(virtualValue) == "Ref" then
+					table.insert(deferredRefs, {
+						id = id,
+						instance = instance,
+						propertyName = propertyName,
+						virtualValue = virtualValue,
+					})
+					continue
+				end
 
-	for propertyName, virtualValue in pairs(virtualInstance.Properties) do
-		-- Because refs may refer to instances that we haven't constructed yet,
-		-- we defer applying any ref properties until all instances are created.
-		if next(virtualValue) == "Ref" then
-			table.insert(deferredRefs, {
-				id = id,
-				instance = instance,
-				propertyName = propertyName,
-				virtualValue = virtualValue,
-			})
-			continue
-		end
+				local decodeSuccess, value = decodeValue(virtualValue, instanceMap)
+				if not decodeSuccess then
+					if virtualInstance.ClassName ~= "MeshPart" then
+						unappliedProperties[propertyName] = virtualValue
+					end
+					continue
+				end
 
-		local decodeSuccess, value = decodeValue(virtualValue, instanceMap)
-		if not decodeSuccess then
-			unappliedProperties[propertyName] = virtualValue
-			continue
-		end
+				local setPropertySuccess = setProperty(instance, propertyName, value)
+				if not setPropertySuccess then
+					if virtualInstance.ClassName ~= "MeshPart" then
+						unappliedProperties[propertyName] = virtualValue
+					end
+				end
+			end
 
-		local setPropertySuccess = setProperty(instance, propertyName, value)
-		if not setPropertySuccess then
-			unappliedProperties[propertyName] = virtualValue
-		end
-	end
+			-- If there were any properties that we failed to assign, push this into our
+			-- unapplied patch as an update that would need to be applied.
+			if next(unappliedProperties) ~= nil then
+				table.insert(unappliedPatch.updated, {
+					id = id,
+					changedProperties = unappliedProperties,
+				})
+			end
 
-	-- If there were any properties that we failed to assign, push this into our
-	-- unapplied patch as an update that would need to be applied.
-	if next(unappliedProperties) ~= nil then
-		table.insert(unappliedPatch.updated, {
-			id = id,
-			changedProperties = unappliedProperties,
-		})
-	end
+			local promises = {}
+			for _, childId in ipairs(virtualInstance.Children) do
+				table.insert(promises, reifyInner(instanceMap, virtualInstances, childId, instance, unappliedPatch, deferredRefs))
+			end
 
-	for _, childId in ipairs(virtualInstance.Children) do
-		reifyInner(instanceMap, virtualInstances, childId, instance, unappliedPatch, deferredRefs)
-	end
-
-	instance.Parent = parentInstance
-	instanceMap:insert(id, instance)
+			return allPromise(promises)
+				:andThen(function()
+					instance.Parent = parentInstance
+					instanceMap:insert(id, instance)
+				end)
+		end)
+		:catch(function()
+			addAllToPatch(unappliedPatch, virtualInstances, id)
+		end)
 end
 
 function applyDeferredRefs(instanceMap, deferredRefs, unappliedPatch)
@@ -158,4 +291,5 @@ end
 return {
 	reifyInner = reifyInner,
 	applyDeferredRefs = applyDeferredRefs,
+	allPromise = allPromise;
 }
