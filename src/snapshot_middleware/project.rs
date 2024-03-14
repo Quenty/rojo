@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{bail, Context};
 use memofs::Vfs;
+use normpath::PathExt;
 use rbx_dom_weak::{
     types::{Attributes, Ref, Variant},
     ustr, HashMapExt as _, Instance, Ustr, UstrMap,
@@ -46,11 +47,21 @@ pub fn snapshot_project(
 
     let rules = project.glob_ignore_paths.iter().map(|glob| PathIgnoreRule {
         glob: glob.clone(),
-        base_path: project.folder_location().to_path_buf(),
+        base_path: project
+            .folder_location()
+            .normalize()
+            .expect("failed to normalize project path")
+            .as_path()
+            .to_path_buf(),
     });
 
     let sync_rules = project.sync_rules.iter().map(|rule| SyncRule {
-        base_path: project.folder_location().to_path_buf(),
+        base_path: project
+            .folder_location()
+            .normalize()
+            .expect("failed to normalize project path")
+            .as_path()
+            .to_path_buf(),
         ..rule.clone()
     });
 
@@ -123,7 +134,15 @@ pub fn snapshot_project_node(
         // If the path specified in the project is relative, we assume it's
         // relative to the folder that the project is in, project_folder.
         let full_path = if path.is_relative() {
-            Cow::Owned(project_folder.join(path))
+            if let Ok(result) = project_folder.join(path).as_path().normalize() {
+                Cow::Owned(result.into())
+            } else {
+                log::trace!(
+                    "Failed to normalize path {}",
+                    project_folder.join(path).display()
+                );
+                Cow::Owned(project_folder.join(path))
+            }
         } else {
             Cow::Borrowed(path)
         };
