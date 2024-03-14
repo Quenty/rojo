@@ -133,7 +133,7 @@ impl JobThreadContext {
         let applied_patches = match event {
             VfsEvent::Create(path) | VfsEvent::Remove(path) | VfsEvent::Write(path) => {
                 let mut tree = self.tree.lock().unwrap();
-                let mut symlinks = self.symlinks.lock().unwrap();
+                let mut symlinks: std::sync::MutexGuard<'_, std::collections::BTreeMap<std::path::PathBuf, crate::snapshot::Symlink>> = self.symlinks.lock().unwrap();
                 let mut applied_patches = Vec::new();
 
                 // Find the nearest ancestor to this path that has
