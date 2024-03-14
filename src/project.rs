@@ -10,10 +10,7 @@ use memofs::Vfs;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use crate::{
-    glob::Glob, resolution::UnresolvedValue, snapshot::SyncRule,
-    snapshot_middleware::default_sync_rules,
-};
+use crate::{glob::Glob, resolution::UnresolvedValue, snapshot::SyncRule};
 
 static PROJECT_FILENAME: &str = "default.project.json";
 
