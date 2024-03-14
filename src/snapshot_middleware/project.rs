@@ -2,6 +2,7 @@ use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use anyhow::{bail, Context};
 use memofs::Vfs;
+use normpath::PathExt;
 use rbx_dom_weak::types::{Attributes, Ref};
 use rbx_reflection::ClassTag;
 
@@ -112,7 +113,15 @@ pub fn snapshot_project_node(
         // If the path specified in the project is relative, we assume it's
         // relative to the folder that the project is in, project_folder.
         let full_path = if path.is_relative() {
-            Cow::Owned(project_folder.join(path))
+            if let Ok(result) = project_folder.join(path).as_path().normalize() {
+                Cow::Owned(result.into())
+            } else {
+                log::trace!(
+                    "Failed to normalize path {}",
+                    project_folder.join(path).display()
+                );
+                Cow::Owned(project_folder.join(path))
+            }
         } else {
             Cow::Borrowed(path)
         };
