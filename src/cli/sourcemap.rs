@@ -11,6 +11,7 @@ use rayon::prelude::*;
 use rbx_dom_weak::types::Ref;
 use serde::Serialize;
 use tokio::runtime::Runtime;
+use pathdiff::diff_paths;
 
 use crate::{
     serve_session::ServeSession,
@@ -175,15 +176,15 @@ fn recurse_create_node<'a>(
         return None;
     }
 
-    let file_paths = instance
-        .metadata()
-        .relevant_paths
-        .iter()
-        // Not all paths listed as relevant are guaranteed to exist.
-        .filter(|path| path.is_file())
-        .map(|path| path.strip_prefix(project_dir).expect(PATH_STRIP_FAILED_ERR))
-        .map(|path| path.to_path_buf())
-        .collect();
+	let file_paths = instance
+		.metadata()
+		.relevant_paths
+		.iter()
+		.filter(|path| path.is_file())
+		.filter_map(|path| {
+			diff_paths(path, project_dir) // project_dir should be absolute
+		})
+		.collect::<Vec<_>>();
 
     Some(SourcemapNode {
         name: instance.name(),
