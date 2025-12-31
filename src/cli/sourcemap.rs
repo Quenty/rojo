@@ -8,6 +8,7 @@ use std::{
 use clap::Parser;
 use fs_err::File;
 use memofs::Vfs;
+use pathdiff::diff_paths;
 use rayon::prelude::*;
 use rbx_dom_weak::{types::Ref, Ustr};
 use serde::Serialize;
@@ -208,7 +209,7 @@ fn recurse_create_node<'a>(
     } else {
         for val in file_paths {
             output_file_paths.push(Cow::from(
-                val.strip_prefix(project_dir).expect(PATH_STRIP_FAILED_ERR),
+                diff_paths(val, project_dir).expect(PATH_STRIP_FAILED_ERR),
             ));
         }
     };
