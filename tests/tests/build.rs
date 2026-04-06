@@ -32,6 +32,7 @@ gen_build_tests! {
     gitkeep,
     ignore_glob_inner,
     ignore_glob_nested,
+    ignore_glob_outer,
     ignore_glob_spec,
     infer_service_name,
     infer_starter_player,

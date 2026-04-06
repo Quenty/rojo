@@ -1,0 +1,9 @@
+{
+  "name": "project",
+  "tree": {
+    "$path": "../outer"
+  },
+  "globIgnorePaths": [
+    "**/*.spec.lua"
+  ]
+}

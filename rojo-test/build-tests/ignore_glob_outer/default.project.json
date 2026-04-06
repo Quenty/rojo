@@ -1,0 +1,6 @@
+{
+  "name": "ignore_glob_outer",
+  "tree": {
+    "$path": "project"
+  }
+}

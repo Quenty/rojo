@@ -229,10 +229,20 @@ impl PathIgnoreRule {
     pub fn passes<P: AsRef<Path>>(&self, path: P) -> bool {
         let path = path.as_ref();
 
-        match path.strip_prefix(&self.base_path) {
-            Ok(suffix) => !self.glob.is_match(suffix),
-            Err(_) => true,
-        }
+        let suffix = match path.strip_prefix(&self.base_path) {
+            Ok(suffix) => suffix.to_path_buf(),
+            Err(_) => {
+                // When paths are normalized, the target may be outside the
+                // base_path (e.g. a sibling directory via `../`). Compute the
+                // relative path so the glob can still match.
+                match pathdiff::diff_paths(path, &self.base_path) {
+                    Some(relative) => relative,
+                    None => return true,
+                }
+            }
+        };
+
+        !self.glob.is_match(suffix)
     }
 }
 
