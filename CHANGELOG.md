@@ -40,6 +40,10 @@ Making a new release? Simply add the new header with the version and date undern
 
 [#1176]: https://github.com/rojo-rbx/rojo/pull/1176
 
+* Updated rbx-dom dependencies, fixing a crash when serializing instances whose `Tags` property was written as a `SharedString` by Roblox Studio. ([rbx-dom#634])
+
+[rbx-dom#634]: https://github.com/rojo-rbx/rbx-dom/pull/634
+
 ## [7.7.0-rc.1] (November 27th, 2025)
 
 * Fixed a bug where passing `--skip-git` to `rojo init` would still create a file named `gitignore.txt` ([#1172])
