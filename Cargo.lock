@@ -2063,7 +2063,7 @@ dependencies = [
 
 [[package]]
 name = "rojo"
-version = "7.7.0-rc.2-quenty"
+version = "7.7.0-rc.3-quenty"
 dependencies = [
  "anyhow",
  "backtrace",
