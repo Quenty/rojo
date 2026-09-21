@@ -6,7 +6,28 @@ use crate::{
 };
 use memofs::Vfs;
 use rbx_dom_weak::{types::Ref, ustr};
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// Returns the canonical path a symlink points at. This is used both as the
+/// identity of the link (two links with the same target become one instance
+/// plus ObjectValues pointing at it) and as the location to snapshot from.
+///
+/// Canonicalizing the link's target rather than the link itself lets the
+/// `Vfs` reuse the result: in a pnpm tree the same absolute target appears
+/// behind hundreds of different links, so only the first costs a full
+/// resolution. Relative targets are resolved through the link, since the
+/// same relative text under different directories can name different places.
+pub fn symlink_target(vfs: &Vfs, path: &Path) -> anyhow::Result<PathBuf> {
+    let target = vfs.read_link(path)?;
+
+    let canonical = if target.is_absolute() {
+        vfs.canonicalize(&target)?
+    } else {
+        vfs.canonicalize(path)?
+    };
+
+    Ok(strip_windows_long_file_path(&canonical).to_path_buf())
+}
 
 pub fn snapshot_symlink(
     symlinks: &mut Symlinks,
@@ -72,11 +93,9 @@ fn build_and_update(
     path: &Path,
     canonical: &Path,
 ) -> anyhow::Result<Option<InstanceSnapshot>> {
-    let build_from_path = strip_windows_long_file_path(canonical);
+    log::trace!("Building data from {}", canonical.display());
 
-    log::trace!("Building data from {}", build_from_path.display());
-
-    let result = snapshot_from_vfs(symlinks, context, vfs, build_from_path);
+    let result = snapshot_from_vfs(symlinks, context, vfs, canonical);
 
     match result {
         Ok(Some(found_snapshot)) => {

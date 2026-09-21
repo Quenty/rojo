@@ -242,6 +242,10 @@ impl VfsBackend for InMemoryFs {
         Err(io::Error::new(io::ErrorKind::Other, "Not implemented"))
     }
 
+    fn read_link(&mut self, _path: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::other("InMemoryFs does not support symlinks"))
+    }
+
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
         let inner = self.inner.lock().unwrap();
 

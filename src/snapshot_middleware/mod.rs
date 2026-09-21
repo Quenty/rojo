@@ -75,8 +75,8 @@ pub fn snapshot_from_vfs(
     };
 
     if meta.is_symlink() {
-        let canonical = vfs.canonicalize(path)?;
-        symlink::snapshot_symlink(symlinks, context, vfs, path, canonical.as_path())
+        let target = symlink::symlink_target(vfs, path)?;
+        symlink::snapshot_symlink(symlinks, context, vfs, path, &target)
     } else if meta.is_dir() {
         let (middleware, dir_name, init_path) = get_dir_middleware(vfs, path)?;
         // TODO: Support user defined init paths

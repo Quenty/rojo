@@ -58,6 +58,10 @@ impl VfsBackend for NoopBackend {
         ))
     }
 
+    fn read_link(&mut self, _path: &Path) -> io::Result<PathBuf> {
+        Err(io::Error::other("NoopBackend doesn't do anything"))
+    }
+
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
         crossbeam_channel::never()
     }

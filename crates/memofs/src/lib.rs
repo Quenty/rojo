@@ -76,12 +76,17 @@ pub trait VfsBackend: sealed::Sealed + Send + 'static {
     fn create_dir_all(&mut self, path: &Path) -> io::Result<()>;
     fn metadata(&mut self, path: &Path) -> io::Result<Metadata>;
     fn canonicalize(&mut self, path: &Path) -> io::Result<PathBuf>;
+    fn read_link(&mut self, path: &Path) -> io::Result<PathBuf>;
     fn remove_file(&mut self, path: &Path) -> io::Result<()>;
     fn remove_dir_all(&mut self, path: &Path) -> io::Result<()>;
 
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent>;
     fn watch(&mut self, path: &Path) -> io::Result<()>;
     fn unwatch(&mut self, path: &Path) -> io::Result<()>;
+
+    /// Tells the backend that `path` changed on disk, so that anything it
+    /// has cached about `path`, its parent, or its descendants is stale.
+    fn invalidate(&mut self, _path: &Path) {}
 }
 
 /// Vfs equivalent to [`std::fs::DirEntry`][std::fs::DirEntry].
@@ -236,13 +241,24 @@ impl VfsInner {
         self.backend.canonicalize(path)
     }
 
+    fn read_link<P: AsRef<Path>>(&mut self, path: P) -> io::Result<PathBuf> {
+        let path = path.as_ref();
+        self.backend.read_link(path)
+    }
+
     fn event_receiver(&self) -> crossbeam_channel::Receiver<VfsEvent> {
         self.backend.event_receiver()
     }
 
     fn commit_event(&mut self, event: &VfsEvent) -> io::Result<()> {
-        if let VfsEvent::Remove(path) = event {
-            let _ = self.backend.unwatch(path);
+        match event {
+            VfsEvent::Remove(path) => {
+                let _ = self.backend.unwatch(path);
+                self.backend.invalidate(path);
+            }
+            VfsEvent::Create(path) | VfsEvent::Write(path) => {
+                self.backend.invalidate(path);
+            }
         }
 
         Ok(())
@@ -429,6 +445,18 @@ impl Vfs {
     pub fn canonicalize<P: AsRef<Path>>(&self, path: P) -> io::Result<PathBuf> {
         let path = path.as_ref();
         self.inner.lock().unwrap().canonicalize(path)
+    }
+
+    /// Returns the target of a symbolic link (or junction), without resolving
+    /// the target itself.
+    ///
+    /// Roughly equivalent to [`std::fs::read_link`][std::fs::read_link].
+    ///
+    /// [std::fs::read_link]: https://doc.rust-lang.org/stable/std/fs/fn.read_link.html
+    #[inline]
+    pub fn read_link<P: AsRef<Path>>(&self, path: P) -> io::Result<PathBuf> {
+        let path = path.as_ref();
+        self.inner.lock().unwrap().read_link(path)
     }
 
     /// Retrieve a handle to the event receiver for this `Vfs`.
